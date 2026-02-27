@@ -1,13 +1,18 @@
 #include "mainwindow.h"
 
 #include <QDialog>
+#include <QEvent>
 #include <QFileDialog>
 #include <QFormLayout>
+#include <QHBoxLayout>
 #include <QImage>
 #include <QLabel>
 #include <QMediaContent>
 #include <QMediaPlayer>
+#include <QMenu>
+#include <QMenuBar>
 #include <QMimeDatabase>
+#include <QPushButton>
 #include <QSlider>
 #include <QStatusBar>
 #include <QTimer>
@@ -64,6 +69,7 @@ MainWindow::MainWindow(QWidget *parent)
       m_player(new QMediaPlayer(this)),
       m_imageTimer(new QTimer(this)),
       m_timeline(new QSlider(Qt::Horizontal, this)),
+      m_quickToolBar(nullptr),
       m_sequenceIndex(0),
       m_currentMediaKind(MediaKind::None),
       m_adjustDialog(nullptr),
@@ -79,9 +85,19 @@ MainWindow::MainWindow(QWidget *parent)
     statusBar()->showMessage(tr("Ready"));
 }
 
+bool MainWindow::eventFilter(QObject *watched, QEvent *event) {
+    if (watched == m_canvas && event->type() == QEvent::Resize && m_quickToolBar) {
+        m_quickToolBar->move(12, 12);
+    }
+    return QMainWindow::eventFilter(watched, event);
+}
+
 void MainWindow::setupUi() {
     setWindowTitle(tr("Qt C++ Player"));
-    resize(1200, 800);
+    resize(1280, 820);
+
+    buildMenuBar();
+    buildMainToolBar();
 
     auto *central = new QWidget(this);
     auto *layout = new QVBoxLayout(central);
@@ -91,36 +107,116 @@ void MainWindow::setupUi() {
     m_timeline->setRange(0, 0);
 
     layout->addWidget(m_canvas, 1);
-    layout->addWidget(m_timeline);
+
+    auto *playbackPanel = new QWidget(this);
+    auto *playbackLayout = new QHBoxLayout(playbackPanel);
+    playbackLayout->setContentsMargins(0, 0, 0, 0);
+    playbackLayout->setSpacing(6);
+
+    auto *rewindButton = new QPushButton(tr("<< 5s"), playbackPanel);
+    auto *playButton = new QPushButton(tr("Play"), playbackPanel);
+    auto *pauseButton = new QPushButton(tr("Pause"), playbackPanel);
+    auto *stopButton = new QPushButton(tr("Stop"), playbackPanel);
+    auto *forwardButton = new QPushButton(tr("5s >>"), playbackPanel);
+    auto *rate1 = new QPushButton(tr("1x"), playbackPanel);
+    auto *rate2 = new QPushButton(tr("2x"), playbackPanel);
+    auto *rate4 = new QPushButton(tr("4x"), playbackPanel);
+    auto *rate6 = new QPushButton(tr("6x"), playbackPanel);
+    auto *rateHalf = new QPushButton(tr("1/2x"), playbackPanel);
+    auto *rateQuarter = new QPushButton(tr("1/4x"), playbackPanel);
+
+    connect(rewindButton, &QPushButton::clicked, this, &MainWindow::rewind);
+    connect(playButton, &QPushButton::clicked, this, &MainWindow::play);
+    connect(pauseButton, &QPushButton::clicked, this, &MainWindow::pause);
+    connect(stopButton, &QPushButton::clicked, this, &MainWindow::stop);
+    connect(forwardButton, &QPushButton::clicked, this, &MainWindow::fastForward);
+    connect(rate1, &QPushButton::clicked, this, &MainWindow::normalSpeed);
+    connect(rate2, &QPushButton::clicked, this, &MainWindow::speed2x);
+    connect(rate4, &QPushButton::clicked, this, &MainWindow::speed4x);
+    connect(rate6, &QPushButton::clicked, this, &MainWindow::speed6x);
+    connect(rateHalf, &QPushButton::clicked, this, &MainWindow::speedHalf);
+    connect(rateQuarter, &QPushButton::clicked, this, &MainWindow::speedQuarter);
+
+    playbackLayout->addWidget(rewindButton);
+    playbackLayout->addWidget(playButton);
+    playbackLayout->addWidget(pauseButton);
+    playbackLayout->addWidget(stopButton);
+    playbackLayout->addWidget(forwardButton);
+    playbackLayout->addWidget(rateQuarter);
+    playbackLayout->addWidget(rateHalf);
+    playbackLayout->addWidget(rate1);
+    playbackLayout->addWidget(rate2);
+    playbackLayout->addWidget(rate4);
+    playbackLayout->addWidget(rate6);
+    playbackLayout->addWidget(m_timeline, 1);
+
+    layout->addWidget(playbackPanel);
+
     setCentralWidget(central);
 
-    auto *fileBar = addToolBar(tr("File"));
-    fileBar->addAction(tr("Import"), this, &MainWindow::importMedia);
+    buildQuickToolBar();
+}
 
-    auto *viewBar = addToolBar(tr("View"));
-    viewBar->addAction(tr("Zoom In"), m_canvas, &PlaybackCanvas::zoomIn);
-    viewBar->addAction(tr("Zoom Out"), m_canvas, &PlaybackCanvas::zoomOut);
-    viewBar->addAction(tr("Reset View"), m_canvas, &PlaybackCanvas::resetViewTransform);
-    viewBar->addAction(tr("Brightness/Contrast"), this, &MainWindow::openImageAdjustDialog);
+void MainWindow::buildMenuBar() {
+    auto *fileMenu = menuBar()->addMenu(tr("File"));
+    fileMenu->addAction(tr("Import"), this, &MainWindow::importMedia);
+    fileMenu->addSeparator();
+    fileMenu->addAction(tr("Exit"), this, &QWidget::close);
 
-    auto *drawBar = addToolBar(tr("Draw"));
-    drawBar->addAction(tr("Draw None"), [this]() { m_canvas->setDrawMode(PlaybackCanvas::DrawMode::None); });
-    drawBar->addAction(tr("Draw Point"), [this]() { m_canvas->setDrawMode(PlaybackCanvas::DrawMode::Point); });
-    drawBar->addAction(tr("Draw Line"), [this]() { m_canvas->setDrawMode(PlaybackCanvas::DrawMode::Line); });
-    drawBar->addAction(tr("Clear Drawings"), m_canvas, &PlaybackCanvas::clearDrawings);
+    auto *viewMenu = menuBar()->addMenu(tr("View"));
+    viewMenu->addAction(tr("Zoom In"), m_canvas, &PlaybackCanvas::zoomIn);
+    viewMenu->addAction(tr("Zoom Out"), m_canvas, &PlaybackCanvas::zoomOut);
+    viewMenu->addAction(tr("Reset View"), m_canvas, &PlaybackCanvas::resetViewTransform);
+    viewMenu->addAction(tr("Brightness/Contrast"), this, &MainWindow::openImageAdjustDialog);
 
-    auto *playbackBar = addToolBar(tr("Playback"));
-    playbackBar->addAction(tr("Play"), this, &MainWindow::play);
-    playbackBar->addAction(tr("Pause"), this, &MainWindow::pause);
-    playbackBar->addAction(tr("Stop"), this, &MainWindow::stop);
-    playbackBar->addAction(tr("<< 5s"), this, &MainWindow::rewind);
-    playbackBar->addAction(tr("5s >>"), this, &MainWindow::fastForward);
-    playbackBar->addAction(tr("1x"), this, &MainWindow::normalSpeed);
-    playbackBar->addAction(tr("2x"), this, &MainWindow::speed2x);
-    playbackBar->addAction(tr("4x"), this, &MainWindow::speed4x);
-    playbackBar->addAction(tr("6x"), this, &MainWindow::speed6x);
-    playbackBar->addAction(tr("1/2x"), this, &MainWindow::speedHalf);
-    playbackBar->addAction(tr("1/4x"), this, &MainWindow::speedQuarter);
+    auto *drawMenu = menuBar()->addMenu(tr("Draw"));
+    drawMenu->addAction(tr("Draw None"), [this]() { m_canvas->setDrawMode(PlaybackCanvas::DrawMode::None); });
+    drawMenu->addAction(tr("Draw Point"), [this]() { m_canvas->setDrawMode(PlaybackCanvas::DrawMode::Point); });
+    drawMenu->addAction(tr("Draw Line"), [this]() { m_canvas->setDrawMode(PlaybackCanvas::DrawMode::Line); });
+    drawMenu->addAction(tr("Clear Drawings"), m_canvas, &PlaybackCanvas::clearDrawings);
+
+    auto *playbackMenu = menuBar()->addMenu(tr("Playback"));
+    playbackMenu->addAction(tr("Play"), this, &MainWindow::play);
+    playbackMenu->addAction(tr("Pause"), this, &MainWindow::pause);
+    playbackMenu->addAction(tr("Stop"), this, &MainWindow::stop);
+    playbackMenu->addAction(tr("<< 5s"), this, &MainWindow::rewind);
+    playbackMenu->addAction(tr("5s >>"), this, &MainWindow::fastForward);
+}
+
+void MainWindow::buildMainToolBar() {
+    auto *mainToolBar = addToolBar(tr("Main Toolbar"));
+    mainToolBar->setMovable(true);
+    mainToolBar->addAction(tr("Import"), this, &MainWindow::importMedia);
+    mainToolBar->addSeparator();
+    mainToolBar->addAction(tr("Zoom In"), m_canvas, &PlaybackCanvas::zoomIn);
+    mainToolBar->addAction(tr("Zoom Out"), m_canvas, &PlaybackCanvas::zoomOut);
+    mainToolBar->addAction(tr("Reset View"), m_canvas, &PlaybackCanvas::resetViewTransform);
+    mainToolBar->addSeparator();
+    mainToolBar->addAction(tr("Draw Point"), [this]() { m_canvas->setDrawMode(PlaybackCanvas::DrawMode::Point); });
+    mainToolBar->addAction(tr("Draw Line"), [this]() { m_canvas->setDrawMode(PlaybackCanvas::DrawMode::Line); });
+    mainToolBar->addAction(tr("Clear Drawings"), m_canvas, &PlaybackCanvas::clearDrawings);
+    mainToolBar->addSeparator();
+    mainToolBar->addAction(tr("Brightness/Contrast"), this, &MainWindow::openImageAdjustDialog);
+}
+
+void MainWindow::buildQuickToolBar() {
+    m_quickToolBar = new QToolBar(tr("Quick"), m_canvas);
+    m_quickToolBar->setMovable(false);
+    m_quickToolBar->setFloatable(false);
+    m_quickToolBar->setIconSize(QSize(16, 16));
+    m_quickToolBar->setStyleSheet("QToolBar { background: rgba(25, 25, 25, 150); color: white; border: 1px solid rgba(255,255,255,80); }");
+
+    m_quickToolBar->addAction(tr("Play"), this, &MainWindow::play);
+    m_quickToolBar->addAction(tr("Pause"), this, &MainWindow::pause);
+    m_quickToolBar->addAction(tr("Point"), [this]() { m_canvas->setDrawMode(PlaybackCanvas::DrawMode::Point); });
+    m_quickToolBar->addAction(tr("Line"), [this]() { m_canvas->setDrawMode(PlaybackCanvas::DrawMode::Line); });
+    m_quickToolBar->addAction(tr("Clear"), m_canvas, &PlaybackCanvas::clearDrawings);
+
+    m_quickToolBar->adjustSize();
+    m_quickToolBar->move(12, 12);
+    m_quickToolBar->show();
+
+    m_canvas->installEventFilter(this);
 }
 
 void MainWindow::setupConnections() {

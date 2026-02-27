@@ -9,12 +9,16 @@ class QDialog;
 class QMediaPlayer;
 class QSlider;
 class QTimer;
+class QToolBar;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
 
 public:
     explicit MainWindow(QWidget *parent = nullptr);
+
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override;
 
 private slots:
     void importMedia();
@@ -48,6 +52,7 @@ private:
     QTimer *m_imageTimer;
 
     QSlider *m_timeline;
+    QToolBar *m_quickToolBar;
 
     QStringList m_sequenceFiles;
     int m_sequenceIndex;
@@ -60,6 +65,9 @@ private:
 
     void setupUi();
     void setupConnections();
+    void buildMenuBar();
+    void buildMainToolBar();
+    void buildQuickToolBar();
 
     void loadVideo(const QString &filePath);
     void loadImageSequence(const QStringList &files);
