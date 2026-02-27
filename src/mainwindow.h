@@ -5,9 +5,7 @@
 #include <QMainWindow>
 #include <QStringList>
 
-class QAudioOutput;
 class QMediaPlayer;
-class QPushButton;
 class QSlider;
 class QTimer;
 
@@ -40,7 +38,6 @@ private:
     PlaybackCanvas *m_canvas;
 
     QMediaPlayer *m_player;
-    QAudioOutput *m_audioOutput;
     QTimer *m_imageTimer;
 
     QSlider *m_timeline;

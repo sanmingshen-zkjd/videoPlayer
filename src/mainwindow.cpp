@@ -1,23 +1,21 @@
 #include "mainwindow.h"
 
-#include <QAudioOutput>
 #include <QFileDialog>
-#include <QHBoxLayout>
+#include <QMediaContent>
 #include <QMediaPlayer>
 #include <QMimeDatabase>
-#include <QPushButton>
 #include <QSlider>
 #include <QStatusBar>
 #include <QTimer>
 #include <QToolBar>
 #include <QVBoxLayout>
 #include <QWidget>
+#include <QUrl>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent),
       m_canvas(new PlaybackCanvas(this)),
       m_player(new QMediaPlayer(this)),
-      m_audioOutput(new QAudioOutput(this)),
       m_imageTimer(new QTimer(this)),
       m_timeline(new QSlider(Qt::Horizontal, this)),
       m_sequenceIndex(0),
@@ -25,7 +23,6 @@ MainWindow::MainWindow(QWidget *parent)
     setupUi();
     setupConnections();
 
-    m_player->setAudioOutput(m_audioOutput);
     m_canvas->attachPlayer(m_player);
 
     m_imageTimer->setInterval(1000 / 24);
@@ -198,7 +195,7 @@ void MainWindow::loadVideo(const QString &filePath) {
     m_sequenceFiles.clear();
 
     m_canvas->clearImage();
-    m_player->setSource(QUrl::fromLocalFile(filePath));
+    m_player->setMedia(QUrl::fromLocalFile(filePath));
     m_timeline->setRange(0, 0);
 }
 
@@ -206,7 +203,7 @@ void MainWindow::loadImageSequence(const QStringList &files) {
     m_currentMediaKind = MediaKind::ImageSequence;
 
     m_player->stop();
-    m_player->setSource(QUrl());
+    m_player->setMedia(QMediaContent());
 
     m_sequenceFiles = files;
     m_sequenceIndex = 0;

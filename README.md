@@ -1,6 +1,6 @@
 # Qt/C++ 播放器界面示例
 
-本项目是一个基于 **Qt6 + C++** 的播放器界面示例，覆盖了以下功能：
+本项目是一个基于 **Qt 5.15 + C++** 的播放器界面示例，覆盖了以下功能：
 
 1. 导入图片序列和常见视频文件（mp4/mov/avi/mkv 等）
 2. 播放/暂停/停止
@@ -15,7 +15,7 @@ cmake -S . -B build
 cmake --build build -j
 ```
 
-> 需要安装 Qt6（Widgets、Multimedia、MultimediaWidgets）。
+> 需要安装 Qt 5.15（Widgets、Multimedia、MultimediaWidgets）。
 
 ## 使用
 

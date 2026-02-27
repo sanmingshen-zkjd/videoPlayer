@@ -8,7 +8,7 @@ set(CMAKE_AUTORCC ON)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets Multimedia MultimediaWidgets)
+find_package(Qt5 5.15 REQUIRED COMPONENTS Widgets Multimedia MultimediaWidgets)
 
 add_executable(VideoPlayerQt
     src/main.cpp
@@ -19,7 +19,7 @@ add_executable(VideoPlayerQt
 target_include_directories(VideoPlayerQt PRIVATE src)
 
 target_link_libraries(VideoPlayerQt PRIVATE
-    Qt6::Widgets
-    Qt6::Multimedia
-    Qt6::MultimediaWidgets
+    Qt5::Widgets
+    Qt5::Multimedia
+    Qt5::MultimediaWidgets
 )
