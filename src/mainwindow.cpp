@@ -94,7 +94,7 @@ void MainWindow::importMedia() {
         }
     }
 
-    if (allImages && files.size() > 1) {
+    if (allImages) {
         loadImageSequence(files);
         statusBar()->showMessage(tr("Loaded %1 image frames").arg(files.size()));
         return;
@@ -196,6 +196,8 @@ void MainWindow::loadVideo(const QString &filePath) {
 
     m_canvas->clearImage();
     m_player->setMedia(QUrl::fromLocalFile(filePath));
+    m_player->pause();
+    m_player->setPosition(0);
     m_timeline->setRange(0, 0);
 }
 

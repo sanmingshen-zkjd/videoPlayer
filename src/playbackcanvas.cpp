@@ -28,6 +28,7 @@ PlaybackCanvas::PlaybackCanvas(QWidget *parent)
     setDragMode(QGraphicsView::ScrollHandDrag);
     setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
     setResizeAnchor(QGraphicsView::AnchorViewCenter);
+    setCursor(Qt::OpenHandCursor);
 
     m_scene.setSceneRect(QRectF(0, 0, 1280, 720));
 }
@@ -72,6 +73,14 @@ void PlaybackCanvas::resetViewTransform() {
 void PlaybackCanvas::setDrawMode(DrawMode mode) {
     m_drawMode = mode;
     m_waitingForSecondPoint = false;
+
+    if (m_drawMode == DrawMode::None) {
+        setDragMode(QGraphicsView::ScrollHandDrag);
+        setCursor(Qt::OpenHandCursor);
+    } else {
+        setDragMode(QGraphicsView::NoDrag);
+        setCursor(Qt::CrossCursor);
+    }
 }
 
 void PlaybackCanvas::wheelEvent(QWheelEvent *event) {
