@@ -2,7 +2,6 @@
 
 #include "playbackcanvas.h"
 
-#include <QImage>
 #include <QMainWindow>
 #include <QStringList>
 
@@ -25,6 +24,11 @@ private slots:
     void fastForward();
     void rewind();
     void normalSpeed();
+    void speed2x();
+    void speed4x();
+    void speed6x();
+    void speedHalf();
+    void speedQuarter();
     void onPositionChanged(qint64 position);
     void onDurationChanged(qint64 duration);
     void seek(int value);
@@ -52,7 +56,7 @@ private:
     QDialog *m_adjustDialog;
     int m_brightness;
     int m_contrast;
-    QImage m_originalImage;
+    double m_playbackRate;
 
     void setupUi();
     void setupConnections();
@@ -62,4 +66,5 @@ private:
     void showImageAt(int index);
     bool isImageFile(const QString &filePath) const;
     void applyImageAdjustments();
+    void setPlaybackRate(double rate);
 };

@@ -1,9 +1,9 @@
 #include "mainwindow.h"
 
-#include <QColor>
 #include <QDialog>
 #include <QFileDialog>
 #include <QFormLayout>
+#include <QImage>
 #include <QLabel>
 #include <QMediaContent>
 #include <QMediaPlayer>
@@ -38,7 +38,7 @@ public:
         m_contrast->setValue(0);
         layout->addRow(tr("Contrast"), m_contrast);
 
-        auto *tips = new QLabel(tr("Only affects image sequence frames."), this);
+        auto *tips = new QLabel(tr("Affects both video and image playback."), this);
         layout->addRow(tips);
 
         connect(m_brightness, &QSlider::valueChanged, this, &ImageAdjustDialog::adjustChanged);
@@ -56,10 +56,6 @@ private:
     QSlider *m_contrast;
 };
 
-int clampColor(int value) {
-    return qBound(0, value, 255);
-}
-
 } // namespace
 
 MainWindow::MainWindow(QWidget *parent)
@@ -72,7 +68,8 @@ MainWindow::MainWindow(QWidget *parent)
       m_currentMediaKind(MediaKind::None),
       m_adjustDialog(nullptr),
       m_brightness(0),
-      m_contrast(0) {
+      m_contrast(0),
+      m_playbackRate(1.0) {
     setupUi();
     setupConnections();
 
@@ -119,6 +116,11 @@ void MainWindow::setupUi() {
     playbackBar->addAction(tr("<< 5s"), this, &MainWindow::rewind);
     playbackBar->addAction(tr("5s >>"), this, &MainWindow::fastForward);
     playbackBar->addAction(tr("1x"), this, &MainWindow::normalSpeed);
+    playbackBar->addAction(tr("2x"), this, &MainWindow::speed2x);
+    playbackBar->addAction(tr("4x"), this, &MainWindow::speed4x);
+    playbackBar->addAction(tr("6x"), this, &MainWindow::speed6x);
+    playbackBar->addAction(tr("1/2x"), this, &MainWindow::speedHalf);
+    playbackBar->addAction(tr("1/4x"), this, &MainWindow::speedQuarter);
 }
 
 void MainWindow::setupConnections() {
@@ -208,7 +210,27 @@ void MainWindow::rewind() {
 }
 
 void MainWindow::normalSpeed() {
-    m_player->setPlaybackRate(1.0);
+    setPlaybackRate(1.0);
+}
+
+void MainWindow::speed2x() {
+    setPlaybackRate(2.0);
+}
+
+void MainWindow::speed4x() {
+    setPlaybackRate(4.0);
+}
+
+void MainWindow::speed6x() {
+    setPlaybackRate(6.0);
+}
+
+void MainWindow::speedHalf() {
+    setPlaybackRate(0.5);
+}
+
+void MainWindow::speedQuarter() {
+    setPlaybackRate(0.25);
 }
 
 void MainWindow::onPositionChanged(qint64 position) {
@@ -269,6 +291,7 @@ void MainWindow::loadVideo(const QString &filePath) {
     m_player->pause();
     m_player->setPosition(0);
     m_timeline->setRange(0, 0);
+    applyImageAdjustments();
 }
 
 void MainWindow::loadImageSequence(const QStringList &files) {
@@ -282,6 +305,7 @@ void MainWindow::loadImageSequence(const QStringList &files) {
 
     m_timeline->setRange(0, m_sequenceFiles.size() - 1);
     showImageAt(m_sequenceIndex);
+    applyImageAdjustments();
 }
 
 void MainWindow::showImageAt(int index) {
@@ -289,9 +313,9 @@ void MainWindow::showImageAt(int index) {
         return;
     }
 
-    m_originalImage = QImage(m_sequenceFiles.at(index));
-    if (!m_originalImage.isNull()) {
-        applyImageAdjustments();
+    QImage image(m_sequenceFiles.at(index));
+    if (!image.isNull()) {
+        m_canvas->setImage(image);
         m_timeline->setValue(index);
     }
 }
@@ -303,25 +327,19 @@ bool MainWindow::isImageFile(const QString &filePath) const {
 }
 
 void MainWindow::applyImageAdjustments() {
-    if (m_currentMediaKind != MediaKind::ImageSequence || m_originalImage.isNull()) {
-        return;
+    m_canvas->setBrightnessContrast(m_brightness, m_contrast);
+}
+
+void MainWindow::setPlaybackRate(double rate) {
+    m_playbackRate = rate;
+
+    if (m_currentMediaKind == MediaKind::ImageSequence) {
+        const int interval = qMax(1, static_cast<int>(1000.0 / (24.0 * m_playbackRate)));
+        m_imageTimer->setInterval(interval);
     }
 
-    QImage adjusted = m_originalImage.convertToFormat(QImage::Format_ARGB32);
-    const double contrastFactor = (m_contrast + 100) / 100.0;
-
-    for (int y = 0; y < adjusted.height(); ++y) {
-        QRgb *line = reinterpret_cast<QRgb *>(adjusted.scanLine(y));
-        for (int x = 0; x < adjusted.width(); ++x) {
-            const QColor src(line[x]);
-            const int r = clampColor(static_cast<int>(((src.red() - 127) * contrastFactor) + 127 + m_brightness));
-            const int g = clampColor(static_cast<int>(((src.green() - 127) * contrastFactor) + 127 + m_brightness));
-            const int b = clampColor(static_cast<int>(((src.blue() - 127) * contrastFactor) + 127 + m_brightness));
-            line[x] = qRgba(r, g, b, src.alpha());
-        }
-    }
-
-    m_canvas->setImage(adjusted);
+    m_player->setPlaybackRate(m_playbackRate);
+    statusBar()->showMessage(tr("Playback rate: %1x").arg(m_playbackRate));
 }
 
 #include "mainwindow.moc"

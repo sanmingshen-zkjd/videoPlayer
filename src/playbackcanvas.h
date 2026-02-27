@@ -36,6 +36,7 @@ public:
 
     void setDrawMode(DrawMode mode);
     void clearDrawings();
+    void setBrightnessContrast(int brightness, int contrast);
 
 protected:
     void wheelEvent(QWheelEvent *event) override;
@@ -44,9 +45,13 @@ protected:
     void drawForeground(QPainter *painter, const QRectF &rect) override;
 
 private:
+    class BrightnessContrastEffect;
+
     QGraphicsScene m_scene;
     QGraphicsPixmapItem *m_imageItem;
     QGraphicsVideoItem *m_videoItem;
+    BrightnessContrastEffect *m_imageEffect;
+    BrightnessContrastEffect *m_videoEffect;
 
     DrawMode m_drawMode;
     QVector<QPointF> m_points;
