@@ -1,5 +1,7 @@
 #include "playbackcanvas.h"
 
+#include <QColorDialog>
+#include <QInputDialog>
 #include <QMediaPlayer>
 #include <QMouseEvent>
 #include <QPainter>
@@ -12,7 +14,9 @@ PlaybackCanvas::PlaybackCanvas(QWidget *parent)
       m_imageItem(new QGraphicsPixmapItem()),
       m_videoItem(new QGraphicsVideoItem()),
       m_drawMode(DrawMode::None),
-      m_waitingForSecondPoint(false) {
+      m_waitingForSecondPoint(false),
+      m_lineColor(QColor(64, 200, 255)),
+      m_lineWidth(2.0) {
     setScene(&m_scene);
 
     m_scene.addItem(m_videoItem);
@@ -29,6 +33,7 @@ PlaybackCanvas::PlaybackCanvas(QWidget *parent)
     setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
     setResizeAnchor(QGraphicsView::AnchorViewCenter);
     setCursor(Qt::OpenHandCursor);
+    setMouseTracking(true);
 
     m_scene.setSceneRect(QRectF(0, 0, 1280, 720));
 }
@@ -81,6 +86,14 @@ void PlaybackCanvas::setDrawMode(DrawMode mode) {
         setDragMode(QGraphicsView::NoDrag);
         setCursor(Qt::CrossCursor);
     }
+    viewport()->update();
+}
+
+void PlaybackCanvas::clearDrawings() {
+    m_points.clear();
+    m_lines.clear();
+    m_waitingForSecondPoint = false;
+    viewport()->update();
 }
 
 void PlaybackCanvas::wheelEvent(QWheelEvent *event) {
@@ -90,17 +103,26 @@ void PlaybackCanvas::wheelEvent(QWheelEvent *event) {
 }
 
 void PlaybackCanvas::mousePressEvent(QMouseEvent *event) {
+    if (event->button() == Qt::RightButton && m_drawMode == DrawMode::Line) {
+        openLineStyleDialog();
+        event->accept();
+        return;
+    }
+
     if (event->button() == Qt::LeftButton && m_drawMode != DrawMode::None) {
         const QPointF scenePos = mapToScene(event->pos());
         if (m_drawMode == DrawMode::Point) {
             m_points.push_back(scenePos);
+            setDrawMode(DrawMode::None);
         } else if (m_drawMode == DrawMode::Line) {
             if (!m_waitingForSecondPoint) {
                 m_firstPoint = scenePos;
+                m_hoverPoint = scenePos;
                 m_waitingForSecondPoint = true;
             } else {
                 m_lines.push_back(QLineF(m_firstPoint, scenePos));
                 m_waitingForSecondPoint = false;
+                setDrawMode(DrawMode::None);
             }
         }
         viewport()->update();
@@ -109,6 +131,14 @@ void PlaybackCanvas::mousePressEvent(QMouseEvent *event) {
     }
 
     QGraphicsView::mousePressEvent(event);
+}
+
+void PlaybackCanvas::mouseMoveEvent(QMouseEvent *event) {
+    if (m_drawMode == DrawMode::Line && m_waitingForSecondPoint) {
+        m_hoverPoint = mapToScene(event->pos());
+        viewport()->update();
+    }
+    QGraphicsView::mouseMoveEvent(event);
 }
 
 void PlaybackCanvas::drawForeground(QPainter *painter, const QRectF &rect) {
@@ -121,21 +151,46 @@ void PlaybackCanvas::drawForeground(QPainter *painter, const QRectF &rect) {
         painter->drawPoint(point);
     }
 
-    QPen linePen(QColor(64, 200, 255));
-    linePen.setWidthF(2.0);
+    QPen linePen(m_lineColor);
+    linePen.setWidthF(m_lineWidth);
     painter->setPen(linePen);
     for (const QLineF &line : m_lines) {
         painter->drawLine(line);
     }
 
     if (m_drawMode == DrawMode::Line && m_waitingForSecondPoint) {
-        QPen waitingPen(QColor(255, 220, 80));
-        waitingPen.setWidthF(5.0);
-        painter->setPen(waitingPen);
-        painter->drawPoint(m_firstPoint);
+        QPen previewPen(m_lineColor);
+        previewPen.setWidthF(m_lineWidth);
+        previewPen.setStyle(Qt::DashLine);
+        painter->setPen(previewPen);
+        painter->drawLine(QLineF(m_firstPoint, m_hoverPoint));
     }
 }
 
 void PlaybackCanvas::applyZoomFactor(double factor) {
     scale(factor, factor);
+}
+
+void PlaybackCanvas::openLineStyleDialog() {
+    bool ok = false;
+    const double width = QInputDialog::getDouble(
+        this,
+        tr("Line Width"),
+        tr("Width:"),
+        m_lineWidth,
+        1.0,
+        20.0,
+        1,
+        &ok
+    );
+    if (ok) {
+        m_lineWidth = width;
+    }
+
+    const QColor picked = QColorDialog::getColor(m_lineColor, this, tr("Line Color"));
+    if (picked.isValid()) {
+        m_lineColor = picked;
+    }
+
+    viewport()->update();
 }

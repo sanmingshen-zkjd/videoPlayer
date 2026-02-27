@@ -1,6 +1,10 @@
 #include "mainwindow.h"
 
+#include <QColor>
+#include <QDialog>
 #include <QFileDialog>
+#include <QFormLayout>
+#include <QLabel>
 #include <QMediaContent>
 #include <QMediaPlayer>
 #include <QMimeDatabase>
@@ -8,9 +12,55 @@
 #include <QStatusBar>
 #include <QTimer>
 #include <QToolBar>
+#include <QUrl>
 #include <QVBoxLayout>
 #include <QWidget>
-#include <QUrl>
+
+namespace {
+
+class ImageAdjustDialog : public QDialog {
+    Q_OBJECT
+
+public:
+    explicit ImageAdjustDialog(QWidget *parent = nullptr) : QDialog(parent) {
+        setWindowTitle(tr("Brightness / Contrast"));
+        setModal(false);
+
+        auto *layout = new QFormLayout(this);
+
+        m_brightness = new QSlider(Qt::Horizontal, this);
+        m_brightness->setRange(-100, 100);
+        m_brightness->setValue(0);
+        layout->addRow(tr("Brightness"), m_brightness);
+
+        m_contrast = new QSlider(Qt::Horizontal, this);
+        m_contrast->setRange(-100, 100);
+        m_contrast->setValue(0);
+        layout->addRow(tr("Contrast"), m_contrast);
+
+        auto *tips = new QLabel(tr("Only affects image sequence frames."), this);
+        layout->addRow(tips);
+
+        connect(m_brightness, &QSlider::valueChanged, this, &ImageAdjustDialog::adjustChanged);
+        connect(m_contrast, &QSlider::valueChanged, this, &ImageAdjustDialog::adjustChanged);
+    }
+
+    int brightness() const { return m_brightness->value(); }
+    int contrast() const { return m_contrast->value(); }
+
+signals:
+    void adjustChanged();
+
+private:
+    QSlider *m_brightness;
+    QSlider *m_contrast;
+};
+
+int clampColor(int value) {
+    return qBound(0, value, 255);
+}
+
+} // namespace
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent),
@@ -19,12 +69,14 @@ MainWindow::MainWindow(QWidget *parent)
       m_imageTimer(new QTimer(this)),
       m_timeline(new QSlider(Qt::Horizontal, this)),
       m_sequenceIndex(0),
-      m_currentMediaKind(MediaKind::None) {
+      m_currentMediaKind(MediaKind::None),
+      m_adjustDialog(nullptr),
+      m_brightness(0),
+      m_contrast(0) {
     setupUi();
     setupConnections();
 
     m_canvas->attachPlayer(m_player);
-
     m_imageTimer->setInterval(1000 / 24);
 
     statusBar()->showMessage(tr("Ready"));
@@ -52,11 +104,13 @@ void MainWindow::setupUi() {
     viewBar->addAction(tr("Zoom In"), m_canvas, &PlaybackCanvas::zoomIn);
     viewBar->addAction(tr("Zoom Out"), m_canvas, &PlaybackCanvas::zoomOut);
     viewBar->addAction(tr("Reset View"), m_canvas, &PlaybackCanvas::resetViewTransform);
+    viewBar->addAction(tr("Brightness/Contrast"), this, &MainWindow::openImageAdjustDialog);
 
     auto *drawBar = addToolBar(tr("Draw"));
     drawBar->addAction(tr("Draw None"), [this]() { m_canvas->setDrawMode(PlaybackCanvas::DrawMode::None); });
     drawBar->addAction(tr("Draw Point"), [this]() { m_canvas->setDrawMode(PlaybackCanvas::DrawMode::Point); });
     drawBar->addAction(tr("Draw Line"), [this]() { m_canvas->setDrawMode(PlaybackCanvas::DrawMode::Line); });
+    drawBar->addAction(tr("Clear Drawings"), m_canvas, &PlaybackCanvas::clearDrawings);
 
     auto *playbackBar = addToolBar(tr("Playback"));
     playbackBar->addAction(tr("Play"), this, &MainWindow::play);
@@ -188,6 +242,22 @@ void MainWindow::nextImageFrame() {
     showImageAt(m_sequenceIndex);
 }
 
+void MainWindow::openImageAdjustDialog() {
+    if (!m_adjustDialog) {
+        auto *dialog = new ImageAdjustDialog(this);
+        m_adjustDialog = dialog;
+        connect(dialog, &ImageAdjustDialog::adjustChanged, this, [this, dialog]() {
+            m_brightness = dialog->brightness();
+            m_contrast = dialog->contrast();
+            applyImageAdjustments();
+        });
+    }
+
+    m_adjustDialog->show();
+    m_adjustDialog->raise();
+    m_adjustDialog->activateWindow();
+}
+
 void MainWindow::loadVideo(const QString &filePath) {
     m_currentMediaKind = MediaKind::Video;
 
@@ -219,9 +289,9 @@ void MainWindow::showImageAt(int index) {
         return;
     }
 
-    QImage image(m_sequenceFiles.at(index));
-    if (!image.isNull()) {
-        m_canvas->setImage(image);
+    m_originalImage = QImage(m_sequenceFiles.at(index));
+    if (!m_originalImage.isNull()) {
+        applyImageAdjustments();
         m_timeline->setValue(index);
     }
 }
@@ -231,3 +301,27 @@ bool MainWindow::isImageFile(const QString &filePath) const {
     const QMimeType type = db.mimeTypeForFile(filePath, QMimeDatabase::MatchContent);
     return type.name().startsWith("image/");
 }
+
+void MainWindow::applyImageAdjustments() {
+    if (m_currentMediaKind != MediaKind::ImageSequence || m_originalImage.isNull()) {
+        return;
+    }
+
+    QImage adjusted = m_originalImage.convertToFormat(QImage::Format_ARGB32);
+    const double contrastFactor = (m_contrast + 100) / 100.0;
+
+    for (int y = 0; y < adjusted.height(); ++y) {
+        QRgb *line = reinterpret_cast<QRgb *>(adjusted.scanLine(y));
+        for (int x = 0; x < adjusted.width(); ++x) {
+            const QColor src(line[x]);
+            const int r = clampColor(static_cast<int>(((src.red() - 127) * contrastFactor) + 127 + m_brightness));
+            const int g = clampColor(static_cast<int>(((src.green() - 127) * contrastFactor) + 127 + m_brightness));
+            const int b = clampColor(static_cast<int>(((src.blue() - 127) * contrastFactor) + 127 + m_brightness));
+            line[x] = qRgba(r, g, b, src.alpha());
+        }
+    }
+
+    m_canvas->setImage(adjusted);
+}
+
+#include "mainwindow.moc"

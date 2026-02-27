@@ -2,9 +2,11 @@
 
 #include "playbackcanvas.h"
 
+#include <QImage>
 #include <QMainWindow>
 #include <QStringList>
 
+class QDialog;
 class QMediaPlayer;
 class QSlider;
 class QTimer;
@@ -27,6 +29,7 @@ private slots:
     void onDurationChanged(qint64 duration);
     void seek(int value);
     void nextImageFrame();
+    void openImageAdjustDialog();
 
 private:
     enum class MediaKind {
@@ -46,6 +49,11 @@ private:
     int m_sequenceIndex;
     MediaKind m_currentMediaKind;
 
+    QDialog *m_adjustDialog;
+    int m_brightness;
+    int m_contrast;
+    QImage m_originalImage;
+
     void setupUi();
     void setupConnections();
 
@@ -53,4 +61,5 @@ private:
     void loadImageSequence(const QStringList &files);
     void showImageAt(int index);
     bool isImageFile(const QString &filePath) const;
+    void applyImageAdjustments();
 };
