@@ -8,6 +8,7 @@
 class QComboBox;
 class QDialog;
 class QEvent;
+class QImage;
 class QMediaPlayer;
 class QSlider;
 class QTimer;

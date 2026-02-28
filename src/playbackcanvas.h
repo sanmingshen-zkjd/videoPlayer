@@ -5,6 +5,7 @@
 #include <QGraphicsScene>
 #include <QGraphicsVideoItem>
 #include <QGraphicsView>
+#include <QMap>
 
 class QMediaPlayer;
 class QMouseEvent;
@@ -34,6 +35,13 @@ public:
     void setDrawMode(DrawMode mode);
     void clearDrawings();
     void setBrightnessContrast(int brightness, int contrast);
+    void addTrackedPoint(const QPointF &scenePos,
+                         const QString &name,
+                         const QString &algorithm,
+                         int searchRadius,
+                         int threshold,
+                         const QImage &referenceFrame);
+    void updateTracking(const QImage &frame);
 
 signals:
     void pointDrawn(const QPointF &scenePos, const QImage &aroundImage);
@@ -48,6 +56,15 @@ private:
     class BrightnessContrastEffect;
     class NamedPointItem;
     class NamedLineItem;
+
+    struct TrackInfo {
+        NamedPointItem *item;
+        QString algorithm;
+        int searchRadius;
+        int threshold;
+        QImage templatePatch;
+        QPointF lastPos;
+    };
 
     QGraphicsScene m_scene;
     QGraphicsPixmapItem *m_imageItem;
@@ -66,8 +83,11 @@ private:
 
     int m_pointCounter;
     int m_lineCounter;
+    QMap<int, TrackInfo> m_tracks;
+    int m_nextTrackId;
 
     void applyZoomFactor(double factor);
     void openLineStyleDialog();
     QImage captureAroundViewPos(const QPoint &viewPos, int halfSize = 100) const;
+    QImage extractPatch(const QImage &img, const QPointF &scenePos, int half = 6) const;
 };
