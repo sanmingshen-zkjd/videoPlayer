@@ -3,7 +3,12 @@
 #include <QColorDialog>
 #include <QCursor>
 #include <QGraphicsEffect>
+#include <QGraphicsEllipseItem>
+#include <QGraphicsLineItem>
+#include <QGraphicsSceneContextMenuEvent>
 #include <QInputDialog>
+#include <QLineEdit>
+#include <QMenu>
 #include <QMediaPlayer>
 #include <QMouseEvent>
 #include <QPainter>
@@ -52,6 +57,93 @@ private:
     int m_contrast;
 };
 
+class PlaybackCanvas::NamedPointItem : public QGraphicsEllipseItem {
+public:
+    NamedPointItem(const QPointF &center, const QString &name, const QColor &color)
+        : QGraphicsEllipseItem(-4.0, -4.0, 8.0, 8.0), m_name(name), m_color(color) {
+        setPos(center);
+        setFlags(QGraphicsItem::ItemIsMovable | QGraphicsItem::ItemIsSelectable);
+        setBrush(m_color);
+        setPen(QPen(Qt::black, 1.0));
+        setToolTip(m_name);
+    }
+
+protected:
+    void contextMenuEvent(QGraphicsSceneContextMenuEvent *event) override {
+        QMenu menu;
+        QAction *setColor = menu.addAction(QObject::tr("Set Color"));
+        QAction *setName = menu.addAction(QObject::tr("Set Name"));
+        QAction *remove = menu.addAction(QObject::tr("Delete"));
+
+        QAction *chosen = menu.exec(event->screenPos());
+        if (chosen == setColor) {
+            const QColor picked = QColorDialog::getColor(m_color);
+            if (picked.isValid()) {
+                m_color = picked;
+                setBrush(m_color);
+            }
+        } else if (chosen == setName) {
+            bool ok = false;
+            const QString text = QInputDialog::getText(nullptr, QObject::tr("Point Name"), QObject::tr("Name:"), QLineEdit::Normal, m_name, &ok);
+            if (ok && !text.trimmed().isEmpty()) {
+                m_name = text.trimmed();
+                setToolTip(m_name);
+            }
+        } else if (chosen == remove) {
+            delete this;
+            return;
+        }
+        event->accept();
+    }
+
+private:
+    QString m_name;
+    QColor m_color;
+};
+
+class PlaybackCanvas::NamedLineItem : public QGraphicsLineItem {
+public:
+    NamedLineItem(const QLineF &line, const QString &name, const QColor &color, qreal width)
+        : QGraphicsLineItem(line), m_name(name), m_color(color), m_width(width) {
+        setFlags(QGraphicsItem::ItemIsMovable | QGraphicsItem::ItemIsSelectable);
+        setPen(QPen(m_color, m_width));
+        setToolTip(m_name);
+    }
+
+protected:
+    void contextMenuEvent(QGraphicsSceneContextMenuEvent *event) override {
+        QMenu menu;
+        QAction *setColor = menu.addAction(QObject::tr("Set Color"));
+        QAction *setName = menu.addAction(QObject::tr("Set Name"));
+        QAction *remove = menu.addAction(QObject::tr("Delete"));
+
+        QAction *chosen = menu.exec(event->screenPos());
+        if (chosen == setColor) {
+            const QColor picked = QColorDialog::getColor(m_color);
+            if (picked.isValid()) {
+                m_color = picked;
+                setPen(QPen(m_color, m_width));
+            }
+        } else if (chosen == setName) {
+            bool ok = false;
+            const QString text = QInputDialog::getText(nullptr, QObject::tr("Line Name"), QObject::tr("Name:"), QLineEdit::Normal, m_name, &ok);
+            if (ok && !text.trimmed().isEmpty()) {
+                m_name = text.trimmed();
+                setToolTip(m_name);
+            }
+        } else if (chosen == remove) {
+            delete this;
+            return;
+        }
+        event->accept();
+    }
+
+private:
+    QString m_name;
+    QColor m_color;
+    qreal m_width;
+};
+
 namespace {
 QCursor highContrastCrossCursor() {
     QPixmap pixmap(32, 32);
@@ -87,7 +179,9 @@ PlaybackCanvas::PlaybackCanvas(QWidget *parent)
       m_drawMode(DrawMode::None),
       m_waitingForSecondPoint(false),
       m_lineColor(QColor(64, 200, 255)),
-      m_lineWidth(2.0) {
+      m_lineWidth(2.0),
+      m_pointCounter(1),
+      m_lineCounter(1) {
     setScene(&m_scene);
 
     m_scene.addItem(m_videoItem);
@@ -163,8 +257,12 @@ void PlaybackCanvas::setDrawMode(DrawMode mode) {
 }
 
 void PlaybackCanvas::clearDrawings() {
-    m_points.clear();
-    m_lines.clear();
+    const QList<QGraphicsItem *> items = m_scene.items();
+    for (QGraphicsItem *item : items) {
+        if (dynamic_cast<NamedPointItem *>(item) || dynamic_cast<NamedLineItem *>(item)) {
+            delete item;
+        }
+    }
     m_waitingForSecondPoint = false;
     viewport()->update();
 }
@@ -191,7 +289,9 @@ void PlaybackCanvas::mousePressEvent(QMouseEvent *event) {
     if (event->button() == Qt::LeftButton && m_drawMode != DrawMode::None) {
         const QPointF scenePos = mapToScene(event->pos());
         if (m_drawMode == DrawMode::Point) {
-            m_points.push_back(scenePos);
+            const QString name = tr("Point %1").arg(m_pointCounter++);
+            m_scene.addItem(new NamedPointItem(scenePos, name, QColor(255, 64, 64)));
+            emit pointDrawn(scenePos, captureAroundViewPos(event->pos()));
             setDrawMode(DrawMode::None);
         } else if (m_drawMode == DrawMode::Line) {
             if (!m_waitingForSecondPoint) {
@@ -199,7 +299,8 @@ void PlaybackCanvas::mousePressEvent(QMouseEvent *event) {
                 m_hoverPoint = scenePos;
                 m_waitingForSecondPoint = true;
             } else {
-                m_lines.push_back(QLineF(m_firstPoint, scenePos));
+                const QString name = tr("Line %1").arg(m_lineCounter++);
+                m_scene.addItem(new NamedLineItem(QLineF(m_firstPoint, scenePos), name, m_lineColor, m_lineWidth));
                 m_waitingForSecondPoint = false;
                 setDrawMode(DrawMode::None);
             }
@@ -222,20 +323,6 @@ void PlaybackCanvas::mouseMoveEvent(QMouseEvent *event) {
 
 void PlaybackCanvas::drawForeground(QPainter *painter, const QRectF &rect) {
     Q_UNUSED(rect)
-
-    QPen pointPen(QColor(255, 64, 64));
-    pointPen.setWidthF(4.0);
-    painter->setPen(pointPen);
-    for (const QPointF &point : m_points) {
-        painter->drawPoint(point);
-    }
-
-    QPen linePen(m_lineColor);
-    linePen.setWidthF(m_lineWidth);
-    painter->setPen(linePen);
-    for (const QLineF &line : m_lines) {
-        painter->drawLine(line);
-    }
 
     if (m_drawMode == DrawMode::Line && m_waitingForSecondPoint) {
         QPen previewPen(m_lineColor);
@@ -272,4 +359,14 @@ void PlaybackCanvas::openLineStyleDialog() {
     }
 
     viewport()->update();
+}
+
+QImage PlaybackCanvas::captureAroundViewPos(const QPoint &viewPos, int halfSize) const {
+    QImage viewImage = viewport()->grab().toImage();
+    QRect cropRect(viewPos.x() - halfSize, viewPos.y() - halfSize, halfSize * 2, halfSize * 2);
+    cropRect = cropRect.intersected(viewImage.rect());
+    if (cropRect.isEmpty()) {
+        return QImage();
+    }
+    return viewImage.copy(cropRect);
 }

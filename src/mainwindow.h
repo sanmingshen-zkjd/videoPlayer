@@ -5,7 +5,9 @@
 #include <QMainWindow>
 #include <QStringList>
 
+class QComboBox;
 class QDialog;
+class QEvent;
 class QMediaPlayer;
 class QSlider;
 class QTimer;
@@ -27,17 +29,13 @@ private slots:
     void stop();
     void fastForward();
     void rewind();
-    void normalSpeed();
-    void speed2x();
-    void speed4x();
-    void speed6x();
-    void speedHalf();
-    void speedQuarter();
     void onPositionChanged(qint64 position);
     void onDurationChanged(qint64 duration);
     void seek(int value);
     void nextImageFrame();
     void openImageAdjustDialog();
+    void onPlaybackRateChanged(const QString &text);
+    void onPointDrawn(const QPointF &scenePos, const QImage &aroundImage);
 
 private:
     enum class MediaKind {
@@ -52,6 +50,7 @@ private:
     QTimer *m_imageTimer;
 
     QSlider *m_timeline;
+    QComboBox *m_rateCombo;
     QToolBar *m_quickToolBar;
 
     QStringList m_sequenceFiles;

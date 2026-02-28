@@ -1,9 +1,11 @@
 #include "mainwindow.h"
 
+#include <QComboBox>
 #include <QDialog>
 #include <QEvent>
 #include <QFileDialog>
 #include <QFormLayout>
+#include <QFrame>
 #include <QHBoxLayout>
 #include <QImage>
 #include <QLabel>
@@ -14,6 +16,7 @@
 #include <QMimeDatabase>
 #include <QPushButton>
 #include <QSlider>
+#include <QSpinBox>
 #include <QStatusBar>
 #include <QTimer>
 #include <QToolBar>
@@ -61,6 +64,56 @@ private:
     QSlider *m_contrast;
 };
 
+class PointConfigDialog : public QDialog {
+    Q_OBJECT
+
+public:
+    PointConfigDialog(const QPointF &scenePos, const QImage &aroundImage, QWidget *parent = nullptr) : QDialog(parent) {
+        setWindowTitle(tr("Point Configuration"));
+        setModal(false);
+        resize(460, 320);
+
+        auto *layout = new QVBoxLayout(this);
+
+        auto *posLabel = new QLabel(tr("Point: (%1, %2)").arg(scenePos.x(), 0, 'f', 1).arg(scenePos.y(), 0, 'f', 1), this);
+        layout->addWidget(posLabel);
+
+        auto *previewLabel = new QLabel(this);
+        previewLabel->setFixedSize(220, 220);
+        previewLabel->setFrameShape(QFrame::StyledPanel);
+        previewLabel->setAlignment(Qt::AlignCenter);
+        if (!aroundImage.isNull()) {
+            previewLabel->setPixmap(QPixmap::fromImage(aroundImage).scaled(previewLabel->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        } else {
+            previewLabel->setText(tr("No preview"));
+        }
+
+        auto *form = new QFormLayout();
+        auto *algorithm = new QComboBox(this);
+        algorithm->addItems({tr("Image Correlation"), tr("Centroid"), tr("Template Tracking"), tr("Kalman")});
+
+        auto *searchRadius = new QSpinBox(this);
+        searchRadius->setRange(10, 300);
+        searchRadius->setValue(100);
+
+        auto *threshold = new QSpinBox(this);
+        threshold->setRange(0, 255);
+        threshold->setValue(30);
+
+        form->addRow(tr("Algorithm"), algorithm);
+        form->addRow(tr("Search Radius"), searchRadius);
+        form->addRow(tr("Threshold"), threshold);
+
+        auto *content = new QHBoxLayout();
+        content->addWidget(previewLabel);
+        content->addLayout(form, 1);
+        layout->addLayout(content);
+
+        auto *hint = new QLabel(tr("This panel is for algorithm setup on the selected point region (±100 px)."), this);
+        layout->addWidget(hint);
+    }
+};
+
 } // namespace
 
 MainWindow::MainWindow(QWidget *parent)
@@ -69,6 +122,7 @@ MainWindow::MainWindow(QWidget *parent)
       m_player(new QMediaPlayer(this)),
       m_imageTimer(new QTimer(this)),
       m_timeline(new QSlider(Qt::Horizontal, this)),
+      m_rateCombo(new QComboBox(this)),
       m_quickToolBar(nullptr),
       m_sequenceIndex(0),
       m_currentMediaKind(MediaKind::None),
@@ -118,36 +172,23 @@ void MainWindow::setupUi() {
     auto *pauseButton = new QPushButton(tr("Pause"), playbackPanel);
     auto *stopButton = new QPushButton(tr("Stop"), playbackPanel);
     auto *forwardButton = new QPushButton(tr("5s >>"), playbackPanel);
-    auto *rate1 = new QPushButton(tr("1x"), playbackPanel);
-    auto *rate2 = new QPushButton(tr("2x"), playbackPanel);
-    auto *rate4 = new QPushButton(tr("4x"), playbackPanel);
-    auto *rate6 = new QPushButton(tr("6x"), playbackPanel);
-    auto *rateHalf = new QPushButton(tr("1/2x"), playbackPanel);
-    auto *rateQuarter = new QPushButton(tr("1/4x"), playbackPanel);
+
+    m_rateCombo->addItems({"0.25x", "0.5x", "1.0x", "2.0x", "4.0x", "6.0x"});
+    m_rateCombo->setCurrentText("1.0x");
 
     connect(rewindButton, &QPushButton::clicked, this, &MainWindow::rewind);
     connect(playButton, &QPushButton::clicked, this, &MainWindow::play);
     connect(pauseButton, &QPushButton::clicked, this, &MainWindow::pause);
     connect(stopButton, &QPushButton::clicked, this, &MainWindow::stop);
     connect(forwardButton, &QPushButton::clicked, this, &MainWindow::fastForward);
-    connect(rate1, &QPushButton::clicked, this, &MainWindow::normalSpeed);
-    connect(rate2, &QPushButton::clicked, this, &MainWindow::speed2x);
-    connect(rate4, &QPushButton::clicked, this, &MainWindow::speed4x);
-    connect(rate6, &QPushButton::clicked, this, &MainWindow::speed6x);
-    connect(rateHalf, &QPushButton::clicked, this, &MainWindow::speedHalf);
-    connect(rateQuarter, &QPushButton::clicked, this, &MainWindow::speedQuarter);
 
     playbackLayout->addWidget(rewindButton);
     playbackLayout->addWidget(playButton);
     playbackLayout->addWidget(pauseButton);
     playbackLayout->addWidget(stopButton);
     playbackLayout->addWidget(forwardButton);
-    playbackLayout->addWidget(rateQuarter);
-    playbackLayout->addWidget(rateHalf);
-    playbackLayout->addWidget(rate1);
-    playbackLayout->addWidget(rate2);
-    playbackLayout->addWidget(rate4);
-    playbackLayout->addWidget(rate6);
+    playbackLayout->addWidget(new QLabel(tr("Rate"), playbackPanel));
+    playbackLayout->addWidget(m_rateCombo);
     playbackLayout->addWidget(m_timeline, 1);
 
     layout->addWidget(playbackPanel);
@@ -224,6 +265,8 @@ void MainWindow::setupConnections() {
     connect(m_player, &QMediaPlayer::durationChanged, this, &MainWindow::onDurationChanged);
     connect(m_timeline, &QSlider::sliderMoved, this, &MainWindow::seek);
     connect(m_imageTimer, &QTimer::timeout, this, &MainWindow::nextImageFrame);
+    connect(m_rateCombo, &QComboBox::currentTextChanged, this, &MainWindow::onPlaybackRateChanged);
+    connect(m_canvas, &PlaybackCanvas::pointDrawn, this, &MainWindow::onPointDrawn);
 }
 
 void MainWindow::importMedia() {
@@ -305,30 +348,6 @@ void MainWindow::rewind() {
     m_player->setPosition(qMax<qint64>(m_player->position() - 5000, 0));
 }
 
-void MainWindow::normalSpeed() {
-    setPlaybackRate(1.0);
-}
-
-void MainWindow::speed2x() {
-    setPlaybackRate(2.0);
-}
-
-void MainWindow::speed4x() {
-    setPlaybackRate(4.0);
-}
-
-void MainWindow::speed6x() {
-    setPlaybackRate(6.0);
-}
-
-void MainWindow::speedHalf() {
-    setPlaybackRate(0.5);
-}
-
-void MainWindow::speedQuarter() {
-    setPlaybackRate(0.25);
-}
-
 void MainWindow::onPositionChanged(qint64 position) {
     if (m_currentMediaKind == MediaKind::Video) {
         m_timeline->setValue(static_cast<int>(position));
@@ -374,6 +393,23 @@ void MainWindow::openImageAdjustDialog() {
     m_adjustDialog->show();
     m_adjustDialog->raise();
     m_adjustDialog->activateWindow();
+}
+
+void MainWindow::onPlaybackRateChanged(const QString &text) {
+    const QString rateText = text;
+    QString normalized = rateText;
+    normalized.remove('x');
+    bool ok = false;
+    const double rate = normalized.toDouble(&ok);
+    if (ok) {
+        setPlaybackRate(rate);
+    }
+}
+
+void MainWindow::onPointDrawn(const QPointF &scenePos, const QImage &aroundImage) {
+    auto *dialog = new PointConfigDialog(scenePos, aroundImage, this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->show();
 }
 
 void MainWindow::loadVideo(const QString &filePath) {

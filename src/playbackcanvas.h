@@ -5,9 +5,6 @@
 #include <QGraphicsScene>
 #include <QGraphicsVideoItem>
 #include <QGraphicsView>
-#include <QLineF>
-#include <QPointF>
-#include <QVector>
 
 class QMediaPlayer;
 class QMouseEvent;
@@ -38,6 +35,9 @@ public:
     void clearDrawings();
     void setBrightnessContrast(int brightness, int contrast);
 
+signals:
+    void pointDrawn(const QPointF &scenePos, const QImage &aroundImage);
+
 protected:
     void wheelEvent(QWheelEvent *event) override;
     void mousePressEvent(QMouseEvent *event) override;
@@ -46,6 +46,8 @@ protected:
 
 private:
     class BrightnessContrastEffect;
+    class NamedPointItem;
+    class NamedLineItem;
 
     QGraphicsScene m_scene;
     QGraphicsPixmapItem *m_imageItem;
@@ -54,8 +56,6 @@ private:
     BrightnessContrastEffect *m_videoEffect;
 
     DrawMode m_drawMode;
-    QVector<QPointF> m_points;
-    QVector<QLineF> m_lines;
 
     bool m_waitingForSecondPoint;
     QPointF m_firstPoint;
@@ -64,6 +64,10 @@ private:
     QColor m_lineColor;
     qreal m_lineWidth;
 
+    int m_pointCounter;
+    int m_lineCounter;
+
     void applyZoomFactor(double factor);
     void openLineStyleDialog();
+    QImage captureAroundViewPos(const QPoint &viewPos, int halfSize = 100) const;
 };
